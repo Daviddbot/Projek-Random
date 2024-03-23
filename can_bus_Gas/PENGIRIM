@@ -1,0 +1,54 @@
+//ARDUINO NANO
+
+#include <mcp_can.h>
+#include <SPI.h>
+#include <MQ2.h>
+
+MCP_CAN CAN0(10);  // Set CS to pin 10
+
+const int gasPin = A5;  // Pin tempat Anda menghubungkan sensor gas
+MQ2 mq2(gasPin);
+float gasValue;
+
+void setup() {
+  pinMode(gasPin, INPUT);
+  Serial.begin(115200);
+  mq2.begin();
+  if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_16MHZ) == CAN_OK) {
+    Serial.println("MCP2515 Initialized Successfully!");
+  } else {
+    Serial.println("Error Initializing MCP2515...");
+  }
+
+  CAN0.setMode(MCP_NORMAL);  // Ubah ke mode normal untuk mengirim pesan
+}
+
+void loop() {
+  // Baca nilai sensor gas
+  //  gasValue = analogRead(gasPin);
+  //  Serial.print(gasValue);
+  float* values= mq2.read(true);
+  gasValue = mq2.readLPG();
+  Serial.println(gasValue);
+  // Kirim data melalui CAN Bus
+  sendDataToCANBus(gasValue);
+
+  // Adjust delay untuk mengontrol laju pembaruan
+  delay(1000);  // Kirim data setiap 1000ms (1 detik)
+}
+
+void sendDataToCANBus(int gasData) {
+  // Siapkan data yang akan dikirim
+  byte dataToSend[8];
+  dataToSend[0] = highByte(gasData);
+  dataToSend[1] = lowByte(gasData);
+
+  // Kirim data melalui CAN Bus
+  byte sndStat = CAN0.sendMsgBuf(0x100, 0, 2, dataToSend); // ID CAN dan panjang data disesuaikan dengan kebutuhan Anda
+
+  if (sndStat == CAN_OK) {
+    Serial.println("Data Sent Successfully!");
+  } else {
+    Serial.println("Error Sending Data...");
+  }
+}
