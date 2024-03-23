@@ -1,0 +1,97 @@
+#include <WiFi.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <mcp_can.h>
+#include <LiquidCrystal_I2C.h>
+#include <HTTPClient.h>
+
+
+MCP_CAN CAN0(5);
+
+//
+const char* ssid = "tes";
+const char* password = "dimaspoke";
+const char* serverName ="https://kebocorangas.shop/simpan.php";
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+float gasData = 0; // Variabel untuk menyimpan data gas
+
+void setup() {
+  Serial.begin(115200);
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_16MHZ) == CAN_OK) {
+    Serial.println("MCP2515 Initialized Successfully!");
+  } else {
+    Serial.println("Error Initializing MCP2515...");
+  }
+
+  CAN0.setMode(MCP_NORMAL);
+
+  lcd.init();
+  lcd.backlight();
+
+  lcd.setCursor(0, 0);
+  lcd.print("KELOMPOK 9");
+  lcd.setCursor(2,1);
+  lcd.print("KEBOCORAN GAS");
+ lcd.clear();
+ delay(1000);
+}
+
+void loop() {
+  
+  unsigned char len = 0;
+  unsigned char rxBuf[8];
+  unsigned long rxId;
+
+  if (CAN0.checkReceive() == CAN_MSGAVAIL) {
+    CAN0.readMsgBuf(&rxId, &len, rxBuf);
+
+    if (len >= 2) {
+      gasData = word(rxBuf[0], rxBuf[1]);
+      Serial.print("Received Gas ada: ");
+      Serial.println(gasData);
+
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Gas Data: ");
+      lcd.setCursor(0, 1);
+      lcd.print(gasData);
+      
+    String strgas = String(gasData);
+      //  Posting Data ke Database Server dengan Protokol HTTP
+    HTTPClient http;
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/x-www-form-urlenco   ded");
+    String httpRequestData = "gas=" + strgas;
+    
+    Serial.print("httpRequestData: ");
+    Serial.println(httpRequestData);
+    int httpResponseCode = http.POST(httpRequestData);
+    if (httpResponseCode>0)
+    {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+    }
+    else
+    {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+    delay(1000);
+    }
+  }  // Tambahkan kode lain yang perlu dieksekusi dalam loop di sini.
+}
+
