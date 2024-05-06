@@ -1,0 +1,49 @@
+#include <mcp_can.h>
+#include <SPI.h>
+
+int moisture_senso, relay_pin = 3;
+MCP_CAN CAN0(10);     // Set CS to pin 10
+int moisture_sensor;
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Initialize MCP2515 running at 16MHz with a baudrate of 500kb/s and the masks and filters disabled.
+  if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_16MHZ) == CAN_OK) 
+    Serial.println("MCP2515 Initialized Successfully!");
+  else 
+    Serial.println("Error Initializing MCP2515...");
+
+  CAN0.setMode(MCP_NORMAL);   // Ubah ke mode normal untuk memungkinkan pesan dikirim
+  
+  pinMode(relay_pin, OUTPUT);
+  digitalWrite(relay_pin, LOW); // Matikan relay terlebih dahulu
+}
+
+void loop() { 
+  moisture_senso = analogRead(A0); // Baca nilai sensor kelembaban
+  moisture_sensor = map( moisture_senso, 0, 1023, 1023, 0);
+  
+  // Data yang akan dikirim berupa data kelembapan tanaman
+  byte moisture_byt[2];
+  moisture_byt[0] = moisture_sensor & 0xFF; // Byte pertama (LSB) dari data kelembapan
+  moisture_byt[1] = (moisture_sensor >> 8) & 0xFF; // Byte kedua (MSB) dari data kelembapan
+  
+  // Kirim pesan CAN: ID = 0x100, Standard CAN Frame, Data length = 8 bytes, 'data' = array of data bytes to send
+  byte snd_moisture = CAN0.sendMsgBuf(0x100, 0, 8, moisture_byt);
+  
+  // Mengendalikan relay berdasarkan kelembapan
+  if (moisture_sensor < 400) { // Ubah threshold sesuai kebutuhan
+    digitalWrite(relay_pin, HIGH); // Nyalakan relay saat tanah kering
+  } else {
+    digitalWrite(relay_pin, LOW); // Matikan relay ketika tanah basah
+  }
+  
+  if (snd_moisture == CAN_OK) {
+    Serial.println("Berhasil Kirim Ke CAN Bus");
+  } else {
+    Serial.println("Gagal Mengirim ke CAN Bus");
+  }
+  
+  delay(5000); // Tunda selama 5 detik sebelum mengirim data berikutnya
+}
