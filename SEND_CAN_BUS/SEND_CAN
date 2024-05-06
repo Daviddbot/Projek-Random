@@ -1,0 +1,104 @@
+#include <mcp_can.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+int moisture;
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Address I2C LCD: 0x27, 16 kolom, 2 baris
+MCP_CAN CAN0(2);  // Set CS to pin D2
+#define can_int 4
+// Variabel host/server yang menampung aplikasi web dan database
+//const char* host = "192.168.43.89";
+
+  const int httpPort = 80;
+  char ssid[] = "Test";
+  char pass[] = "1234512345";
+  const char* serverName = "https://kelembaban.cloud/simpan.php";
+
+  
+void setup() {
+
+
+  Serial.begin(115200);
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Moisture: ");
+  delay(1000);
+
+  // Initialize MCP2515 running at 16MHz with a baudrate of 500kb/s and the masks and filters disabled.
+  if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_16MHZ) == CAN_OK)
+    Serial.println("MCP2515 Initialized Successfully!");
+  else
+    Serial.println("Error Initializing MCP2515...");
+
+  CAN0.setMode(MCP_NORMAL);  // Change to normal mode to receive messages
+  pinMode(can_int, INPUT);
+
+  // Koneksi ke WiFi
+  WiFi.begin(ssid, pass);
+
+  Serial.println("Connecting...");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println("Connected");
+}
+
+void loop() {
+  unsigned long id;
+  unsigned char len;
+  unsigned char buf[8];
+  byte snd_moisture;
+
+  if (CAN0.checkReceive() == CAN_MSGAVAIL) {
+    CAN0.readMsgBuf(&id, &len, buf);
+
+    if (id == 0x100) {
+      int moisture = (buf[1] << 8) | buf[0];
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Moisture: ");
+      lcd.print(moisture);
+
+      if (moisture < 400) {
+        lcd.setCursor(0, 1);
+        lcd.print("Water needed!");
+      } else {
+        lcd.setCursor(0, 1);
+        lcd.print("Soil is wet");
+      }
+
+      Serial.print("Received Moisture: ");
+      Serial.println(moisture);
+    }
+  }
+
+//    String strsoil = String(moisture);
+    //  Posting Data ke Database Server dengan Protokol HTTP
+    HTTPClient http;
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/x-www-form-urlenco   ded");
+    String httpRequestData = "kelembapan=" + moisture;
+
+
+    Serial.print("httpRequestData: ");
+    Serial.println(httpRequestData);
+    int httpResponseCode = http.POST(httpRequestData);
+    if (httpResponseCode>0)
+    {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+    }
+    else
+    {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+    delay(1000);
+}
