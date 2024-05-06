@@ -1,0 +1,88 @@
+#include <Wire.h>
+#include <INA219_WE.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <HTTPClient.h>
+
+#define I2C_ADDRESS 0x40
+
+INA219_WE ina219 = INA219_WE(I2C_ADDRESS);
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 25200; // UTC+7 (7 * 3600 seconds)
+const int   daylightOffset_sec = 0;  // Jakarta tidak menerapkan Daylight Saving Time
+
+float teganganBeban = 0.0;
+float arus_mA = 0.0;
+
+// isi nama dan password wifi
+char ssid[] = "ezzett"; 
+char pass[] = "23146789";
+const char* serverName ="";
+
+void setup() 
+  {
+  Serial.begin(115200);
+  Wire.begin();
+    WiFi.begin(ssid, pass);
+  Serial.println("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) 
+  {
+    delay(1000);
+    Serial.println(".");
+  }
+
+  // Init and get the time
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  
+  if(!ina219.init())
+  {
+    Serial.println("INA219 TIDAK TERHUBUNG!");
+  }
+
+}
+
+void loop() {
+// ambil data sensor INA219 
+  arus_mA = ina219.getCurrent_mA();
+  teganganBeban = ina219.getBusVoltage_V() + (ina219.getShuntVoltage_mV()/1000);
+  struct tm timeinfo;
+    if(!getLocalTime(&timeinfo)){
+      Serial.println("Failed to obtain time");
+      return;
+    }
+
+    char formattedTime[50];
+    strftime(formattedTime, sizeof(formattedTime), "%Y-%m-%d %H:%M:%S", &timeinfo);
+    Serial.println(String() + "WAKTU dari NTP : " + formattedTime);
+    Serial.println();
+
+    
+// print ke serial monitor
+  Serial.print("Tegangan Beban [V]: "); Serial.println(teganganBeban);
+  Serial.print("Arus[mA}          : "); Serial.println(arus_mA);
+  
+    String strwaktu = String(formattedTime);
+    String strtegangan = String(teganganBeban);
+    String strarus = String(arus_mA);
+    //  Posting Data ke Database Server dengan Protokol HTTP
+    HTTPClient http;
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/x-www-form-urlenco   ded");
+    String httpRequestData = "tegangan=" + strtegangan + "&arus=" + strarus + "&tanggal=" + strwaktu;
+    
+    Serial.print("httpRequestData: ");
+    Serial.println(httpRequestData);
+    int httpResponseCode = http.POST(httpRequestData);
+    if (httpResponseCode>0)
+    {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+    }
+    else
+    {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+    delay(1000);
+  }
